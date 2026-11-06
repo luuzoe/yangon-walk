@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Yangon Walk — ရန်ကုန်လမ်းလျှောက် V1</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#0b1526;font-family:"Myanmar Text","Noto Sans Myanmar","Pyidaungsu",sans-serif;touch-action:none}
+#game{position:fixed;inset:0}
+canvas#gl{display:block;width:100%;height:100%}
+/* HUD */
+#hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:10px 12px;pointer-events:none;z-index:5}
+.hudbox{background:rgba(0,0,0,.55);color:#fff;border-radius:12px;padding:8px 12px;font-size:15px;line-height:1.5;backdrop-filter:blur(4px)}
+.hudbox b{color:#ffd54a}
+#clockBox{text-align:center}
+#clockBox .sun{font-size:22px}
+#minimap{position:fixed;top:76px;right:12px;border:2px solid rgba(255,255,255,.6);border-radius:10px;z-index:5;background:#12233d}
+#topBtns{position:fixed;top:76px;left:12px;display:flex;flex-direction:column;gap:8px;z-index:6}
+.tbtn{pointer-events:auto;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:10px;padding:8px 10px;font-size:14px;cursor:pointer}
+.tbtn:active{background:rgba(255,255,255,.25)}
+/* photo button */
+#photoBtn{position:fixed;right:18px;bottom:96px;width:84px;height:84px;border-radius:50%;border:4px solid rgba(255,255,255,.5);background:rgba(0,0,0,.45);color:#fff;font-size:34px;z-index:6;cursor:pointer;opacity:.45}
+#photoBtn.ready{opacity:1;background:#e53935;border-color:#fff;box-shadow:0 0 22px #e53935;animation:pulse 1s infinite}
+@keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
+#photoHint{position:fixed;right:18px;bottom:186px;max-width:230px;background:rgba(0,0,0,.65);color:#ffe082;border-radius:10px;padding:8px 12px;font-size:14px;text-align:right;z-index:6;display:none}
+#toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#ffd54a;border-radius:14px;padding:14px 22px;font-size:22px;font-weight:bold;z-index:8;display:none;text-align:center}
+/* joystick */
+#joy{position:fixed;left:22px;bottom:30px;width:128px;height:128px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);z-index:6;touch-action:none}
+#knob{position:absolute;left:39px;top:39px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.75)}
+/* overlays */
+.overlay{position:fixed;inset:0;background:rgba(5,10,22,.88);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:20;padding:22px;overflow-y:auto}
+.overlay h1{font-size:30px;color:#ffd54a;margin-bottom:8px}
+.overlay h2{font-size:22px;margin-bottom:10px}
+.overlay p{font-size:16px;line-height:1.8;max-width:520px}
+.overlay .sub{color:#b0bec5;font-size:14px;margin-top:10px}
+.bigbtn{margin-top:20px;background:#ffb300;color:#1a1a1a;border:none;border-radius:14px;padding:15px 42px;font-size:20px;font-weight:bold;cursor:pointer}
+.bigbtn:active{transform:scale(.96)}
+#challengeList{text-align:left;display:inline-block;margin-top:12px;background:rgba(255,255,255,.08);border-radius:10px;padding:10px 16px;font-size:15px;line-height:1.9}
+#albumGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px;max-width:520px}
+.slot{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:8px 4px;font-size:12px;line-height:1.4;min-height:64px}
+.slot.done{background:rgba(76,175,80,.3);border-color:#81c784}
+.slot .nm{font-size:12px}
+.slot .sc{color:#ffd54a;font-weight:bold}
+#albumModal{display:none}
+#ver{position:fixed;left:10px;bottom:8px;color:rgba(255,255,255,.55);font-size:12px;z-index:5}
+@media (max-width:600px){.hudbox{font-size:13px;padding:6px 9px}#minimap{width:104px;height:104px;top:66px}#photoBtn{width:72px;height:72px;bottom:88px}#joy{width:112px;height:112px}#knob{left:33px;top:33px;width:46px;height:46px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+  <div class="hudbox">⭐ အမှတ်: <b id="score">0</b><br>📷 ဓာတ်ပုံ: <b id="count">0/10</b></div>
+  <div class="hudbox" id="clockBox"><span class="sun" id="sunIcon">☀️</span><br><b id="clock">08:00</b><br><span id="dayPart">မနက်ပိုင်း</span></div>
+  <div class="hudbox">🎯 Challenge<br><span id="chalMini">—</span></div>
+</div>
+<canvas id="minimap" width="140" height="140"></canvas>
+<div id="topBtns">
+  <button class="tbtn" id="albumBtn">🖼️ Album</button>
+  <button class="tbtn" id="soundBtn">🔊 အသံ: ဖွင့်</button>
+  <button class="tbtn" id="fsBtn">⛶ Fullscreen</button>
+</div>
+<div id="photoHint"></div>
+<button id="photoBtn">📷</button>
+<div id="toast"></div>
+<div id="joy"><div id="knob"></div></div>
+<div id="ver">Yangon Walk V1 • luuzoe.github.io/yangon-walk</div>
+
+<div class="overlay" id="startScreen">
+  <h1>🚶 Yangon Walk</h1>
+  <h2>ရန်ကုန်လမ်းလျှောက် — Downtown ရန်ကုန်အစစ်</h2>
+  <p>လမ်းလျှောက်ပြီး ရန်ကုန်ရဲ့ နာမည်ကြီး နေရာ <b>၁၀ ခု</b> ကို ဓာတ်ပုံရိုက်ပါ။<br>
+  📷 ခလုတ် လင်းလာရင် ဓာတ်ပုံရိုက်လို့ရပြီ — နီးလေ၊ တည့်တည့်မြင်လေ အမှတ်ပိုရမယ်။<br>
+  🌇 နေဝင်ချိန် (ရွှေရောင်အချိန်) မှာ ရိုက်ရင် အမှတ် <b>၂ ဆ</b> ရမယ်။<br>
+  🕓 တစ်နေ့ = ၁၀ မိနစ်။ နေမဝင်ခင် ၁၀ ပုံလုံး ရိုက်နိုင်ရင် နိုင်တယ်။</p>
+  <div id="challengeList"></div>
+  <p class="sub">🕹️ ဘယ် joystick: လမ်းလျှောက် &nbsp;•&nbsp; ညာဘက် ပွတ်ဆွဲ: ကင်မရာလှည့်<br>💻 PC: WASD + mouse drag</p>
+  <button class="bigbtn" id="startBtn">▶ စဆော့မယ်</button>
+  <p class="sub">V1 • Downtown Yangon • Three.js • ဖုန်းနဲ့ ဆော့ဖို့ အကောင်းဆုံး (landscape)</p>
+</div>
+
+<div class="overlay" id="winScreen" style="display:none">
+  <h1>🎉 နိုင်ပြီ!</h1>
+  <h2 id="winText">ဓာတ်ပုံ ၁၀ ပုံလုံး ရိုက်ပြီးပြီ!</h2>
+  <p>⭐ စုစုပေါင်း အမှတ်: <b id="winScore" style="color:#ffd54a">0</b><br>
+  ⏱️ ကြာချိန်: <span id="winTime">—</span><br>
+  📷 Challenge ပြီးတာ: <span id="winChal">—</span></p>
+  <button class="bigbtn" id="winRetry">🔄 နောက်တစ်နေ့ ဆော့မယ်</button>
+</div>
+
+<div class="overlay" id="loseScreen" style="display:none">
+  <h1>🌇 နေဝင်သွားပြီ</h1>
+  <h2 id="loseText">ဓာတ်ပုံ မပြည့်သေးဘူး</h2>
+  <p>📷 ရိုက်ပြီးတာ: <b id="loseCount">0/10</b><br>⭐ အမှတ်: <b id="loseScore" style="color:#ffd54a">0</b><br>
+  မနက်ဖြန် နေထွက်ရင် နောက်တစ်ခေါက် ထပ်ကြိုးစားကြည့်ပါ။</p>
+  <button class="bigbtn" id="loseRetry">🔄 ထပ်ဆော့မယ်</button>
+</div>
+
+<div class="overlay" id="albumModal">
+  <h1>🖼️ Album</h1>
+  <p>ရိုက်ပြီးသား ဓာတ်ပုံများ — Challenge နေရာက ⭐ ပါတယ်</p>
+  <div id="albumGrid"></div>
+  <button class="bigbtn" id="albumClose">ပိတ်မယ်</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+// ---------- Data ----------
+var LANDMARKS=[
+ {id:0,name:"ဆူးလေစေတီ",en:"Sule Pagoda",x:0,z:0,range:30},
+ {id:1,name:"မြို့တော်ခန်းမ",en:"City Hall",x:-37,z:-37,range:28},
+ {id:2,name:"ဗိုလ်ချုပ်ဈေး",en:"Bogyoke Market",x:37,z:-37,range:28},
+ {id:3,name:"ရွှေတိဂုံ",en:"Shwedagon",x:0,z:-185,range:85},
+ {id:4,name:"Secretariat",en:"Secretariat",x:-112,z:37,range:28},
+ {id:5,name:"ကန်တော်ကြီး",en:"Kandawgyi Lake",x:150,z:150,range:38},
+ {id:6,name:"အင်းလျားကန်",en:"Inya Lake",x:-150,z:-150,range:38},
+ {id:7,name:"ရန်ကုန်မြစ် ကမ်းနား",en:"Yangon River",x:0,z:188,range:42},
+ {id:8,name:"St. Mary's Cathedral",en:"St. Mary's Cathedral",x:37,z:37,range:28},
+ {id:9,name:"လက်ဖက်ရည်ဆိုင်",en:"Tea Shop",x:-37,z:112,range:24}
+];
+// Daily challenge: deterministic by date
+function dailyChallenge(){
+  var d=new Date(), seed=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
+  var s=seed>>>0;
+  function rnd(){s=(s*1664525+1013904223)>>>0;return s/4294967296;}
+  var idx=[0,1,2,3,4,5,6,7,8,9], out=[];
+  for(var i=0;i<3;i++){out.push(idx.splice(Math.floor(rnd()*idx.length),1)[0]);}
+  return out;
+}
+var CHAL=dailyChallenge();
+// ---------- State ----------
+var state={started:false,over:false,score:0,photos:{},elapsed:0,chalDone:0};
+var DAY_LEN=600, SUNSET=480, GOLD_START=360;
+function goldenHour(){return state.elapsed>=GOLD_START && state.elapsed<SUNSET;}
+function gameClock(){var m=8*60+Math.floor(state.elapsed);return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");}
+function dayPart(){if(state.elapsed<SUNSET)return state.elapsed<180?"မနက်ပိုင်း":(state.elapsed<360?"နေ့လယ်":"🌇 ရွှေရောင်အချိန် — အမှတ် ၂ ဆ!");return "ညပိုင်း";}
+// ---------- Sound (WebAudio, no files) ----------
+var AC=null,soundOn=true;
+function beep(f,dur,type,vol){if(!soundOn)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();var o=AC.createOscillator(),g=AC.createGain();o.type=type||"sine";o.frequency.value=f;g.gain.value=vol||0.12;o.connect(g);g.connect(AC.destination);o.start();g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+(dur||0.12));o.stop(AC.currentTime+(dur||0.12));}catch(e){}}
+function shutterSound(){beep(1200,0.06,"square",0.15);setTimeout(function(){beep(700,0.08,"square",0.12);},70);}
+</script>
+<script>
+"use strict";
+// ---------- Three.js scene ----------
+var scene,camera,renderer,player,playerYaw=0,camYaw=0,camPitch=0.32;
+var clock=new THREE.Clock();
+var keys={};
+var moveVec={x:0,z:0};
+var lampMats=[],windowMats=[];
+var sunLight,hemi,moonLight;
+
+function canvasTex(w,h,draw){
+  var c=document.createElement("canvas");c.width=w;c.height=h;
+  draw(c.getContext("2d"),w,h);
+  var t=new THREE.CanvasTexture(c);return t;
+}
+function facadeTex(base,win,rows,cols){
+  return canvasTex(256,256,function(g,w,h){
+    g.fillStyle=base;g.fillRect(0,0,w,h);
+    g.fillStyle="rgba(0,0,0,0.15)";g.fillRect(0,0,w,10);g.fillRect(0,h-14,w,14);
+    for(var r=0;r<rows;r++)for(var c=0;c<cols;c++){
+      var x=14+c*(w-28)/cols, y=22+r*(h-44)/rows;
+      g.fillStyle="#2b3644";g.fillRect(x,y,(w-28)/cols-10,(h-44)/rows-12);
+      g.fillStyle=win;g.fillRect(x+3,y+3,(w-28)/cols-16,(h-44)/rows-18);
+    }
+  });
+}
+function signTex(text,bg,fg){
+  return canvasTex(512,128,function(g,w,h){
+    g.fillStyle=bg;g.fillRect(0,0,w,h);
+    g.fillStyle=fg;g.font="bold 52px 'Myanmar Text','Noto Sans Myanmar',sans-serif";
+    g.textAlign="center";g.textBaseline="middle";g.fillText(text,w/2,h/2+4);
+  });
+}
+function goldTex(){
+  return canvasTex(128,256,function(g,w,h){
+    var gr=g.createLinearGradient(0,0,w,0);
+    gr.addColorStop(0,"#b8860b");gr.addColorStop(0.5,"#ffd700");gr.addColorStop(1,"#b8860b");
+    g.fillStyle=gr;g.fillRect(0,0,w,h);
+    g.fillStyle="rgba(255,255,255,0.25)";
+    for(var i=0;i<8;i++)g.fillRect(0,i*32,w,4);
+  });
+}
+
+function init(){
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x87ceeb);
+  scene.fog=new THREE.Fog(0x9fc3e0,180,420);
+  camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,0.1,900);
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById("gl"),antialias:true});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  hemi=new THREE.HemisphereLight(0xbfd9ff,0x6b7c5e,0.9);scene.add(hemi);
+  sunLight=new THREE.DirectionalLight(0xfff2cc,1.1);
+  sunLight.position.set(120,180,60);sunLight.castShadow=true;
+  sunLight.shadow.mapSize.set(2048,2048);
+  sunLight.shadow.camera.left=-220;sunLight.shadow.camera.right=220;
+  sunLight.shadow.camera.top=220;sunLight.shadow.camera.bottom=-220;
+  scene.add(sunLight);
+  moonLight=new THREE.DirectionalLight(0x8fa8ff,0);moonLight.position.set(-80,150,-60);scene.add(moonLight);
+  buildCity();
+  buildPlayer();
+  animate();
+}
+function box(w,h,d,mat,x,y,z,ry){
+  var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z);if(ry)m.rotation.y=ry;
+  m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+}
+function cyl(rt,rb,h,mat,x,y,z,seg){
+  var m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg||16),mat);
+  m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+}
+function cone(r,h,mat,x,y,z,seg){
+  var m=new THREE.Mesh(new THREE.ConeGeometry(r,h,seg||16),mat);
+  m.position.set(x,y,z);m.castShadow=true;scene.add(m);return m;
+}
+
+function buildCity(){
+  // ground
+  var ground=new THREE.Mesh(new THREE.PlaneGeometry(460,460),new THREE.MeshLambertMaterial({color:0x8aa06b}));
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+  // roads: N-S at x=-150,-75,0,75,150 ; E-W at z=-150,-75,0,75,150
+  var roadMat=new THREE.MeshLambertMaterial({color:0x33363b});
+  var walkMat=new THREE.MeshLambertMaterial({color:0xb8b0a0});
+  var xs=[-150,-75,0,75,150],zs=[-150,-75,0,75,150];
+  xs.forEach(function(x){
+    var w=new THREE.Mesh(new THREE.PlaneGeometry(15,440),walkMat);w.rotation.x=-Math.PI/2;w.position.set(x,0.02,0);w.receiveShadow=true;scene.add(w);
+    var r=new THREE.Mesh(new THREE.PlaneGeometry(10,440),roadMat);r.rotation.x=-Math.PI/2;r.position.set(x,0.03,0);r.receiveShadow=true;scene.add(r);
+    for(var z=-200;z<200;z+=16){var d=new THREE.Mesh(new THREE.PlaneGeometry(0.7,6),new THREE.MeshBasicMaterial({color:0xffe082}));d.rotation.x=-Math.PI/2;d.position.set(x,0.04,z);scene.add(d);}
+  });
+  zs.forEach(function(z){
+    var w=new THREE.Mesh(new THREE.PlaneGeometry(440,15),walkMat);w.rotation.x=-Math.PI/2;w.position.set(0,0.02,z);w.receiveShadow=true;scene.add(w);
+    var r=new THREE.Mesh(new THREE.PlaneGeometry(440,10),roadMat);r.rotation.x=-Math.PI/2;r.position.set(0,0.03,z);r.receiveShadow=true;scene.add(r);
+    for(var x=-200;x<200;x+=16){var d=new THREE.Mesh(new THREE.PlaneGeometry(6,0.7),new THREE.MeshBasicMaterial({color:0xffe082}));d.rotation.x=-Math.PI/2;d.position.set(x,0.04,z);scene.add(d);}
+  });
+  // street signs (Burmese, canvas texture)
+  var signData=[["ဆူးလေလမ်း",-150,-100],["အနော်ရထာလမ်း",-75,100],["ဗိုလ်ချုပ်လမ်း",75,-100],["ကုန်သည်လမ်း",150,100],["Strand လမ်း",0,175]];
+  signData.forEach(function(s){
+    var pole=cyl(0.12,0.12,4,new THREE.MeshLambertMaterial({color:0x666666}),s[1]+4,2,s[2],8);
+    var board=new THREE.Mesh(new THREE.BoxGeometry(9,2.2,0.3),new THREE.MeshLambertMaterial({map:signTex(s[0],"#1b5e20","#ffffff")}));
+    board.position.set(s[1]+4,4.2,s[2]);board.castShadow=true;scene.add(board);
+  });
+  // generic buildings on free block centres
+  var occupied=[[0,0],[-37,-37],[37,-37],[0,-185],[-112,37],[150,150],[-150,-150],[0,188],[37,37],[-37,112]];
+  function isOcc(x,z){for(var i=0;i<occupied.length;i++){if(Math.abs(occupied[i][0]-x)<22&&Math.abs(occupied[i][1]-z)<22)return true;}return false;}
+  var facades=[facadeTex("#c9a86a","#ffe9a8",5,5),facadeTex("#8fa8b8","#cfe8ff",6,4),facadeTex("#b87a6a","#ffe0b2",4,6),facadeTex("#a8b89a","#e8f5d0",5,4)];
+  var seed=7;function srnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;}
+  var bx=[-187,-112,-37,37,112,187],bz=[-187,-112,-37,37,112,187];
+  bx.forEach(function(x){bz.forEach(function(z){
+    if(isOcc(x,z))return;
+    if(Math.abs(x)>170&&Math.abs(z)>170)return;
+    var h=8+srnd()*18, w=16+srnd()*8, d=16+srnd()*8;
+    var mat=new THREE.MeshLambertMaterial({map:facades[Math.floor(srnd()*facades.length)]});
+    box(w,h,d,mat,x,h/2,z);
+    box(w+1,1.2,d+1,new THREE.MeshLambertMaterial({color:0x5d4037}),x,h+0.6,z);
+    // awning
+    if(srnd()>0.5)box(w*0.7,0.4,4,new THREE.MeshLambertMaterial({color:srnd()>0.5?0x2e7d32:0xc62828}),x,3.2,z+d/2+1.5);
+  });});
+  buildLandmarks();
+  buildNature();
+}
+function stupa(x,z,baseR,h,scale){
+  var g=new THREE.Group();
+  var gold=new THREE.MeshLambertMaterial({map:goldTex()});
+  var base=new THREE.Mesh(new THREE.BoxGeometry(baseR*2.4,2,baseR*2.4),new THREE.MeshLambertMaterial({color:0xd7ccc8}));base.position.y=1;base.castShadow=true;g.add(base);
+  var b2=new THREE.Mesh(new THREE.BoxGeometry(baseR*1.8,1.6,baseR*1.8),new THREE.MeshLambertMaterial({color:0xefebe9}));b2.position.y=2.8;b2.castShadow=true;g.add(b2);
+  var bell=new THREE.Mesh(new THREE.SphereGeometry(baseR,16,12),gold);bell.scale.y=1.1;bell.position.y=3.6+h*0.08;bell.castShadow=true;g.add(bell);
+  var sp=new THREE.Mesh(new THREE.ConeGeometry(baseR*0.55,h*0.55,16),gold);sp.position.y=3.6+h*0.08+baseR*0.9;sp.castShadow=true;g.add(sp);
+  var tip=new THREE.Mesh(new THREE.SphereGeometry(baseR*0.14,10,8),new THREE.MeshBasicMaterial({color:0xfff176}));tip.position.y=3.6+h*0.08+baseR*0.9+h*0.28;g.add(tip);
+  g.position.set(x,0,z);g.scale.setScalar(scale||1);scene.add(g);return g;
+}
+function buildLandmarks(){
+  // 1 Sule Pagoda — centre plaza
+  var plaza=cyl(16,16,0.6,new THREE.MeshLambertMaterial({color:0xd7ccc8}),0,0.3,0,24);plaza.receiveShadow=true;
+  stupa(0,0,5,16,1);
+  // 2 City Hall — white colonnade
+  box(26,12,16,new THREE.MeshLambertMaterial({color:0xf5f5f0}),-37,6,-37);
+  box(28,2,18,new THREE.MeshLambertMaterial({color:0x8d6e63}),-37,13,-37);
+  for(var i=-2;i<=2;i++)cyl(0.9,0.9,10,new THREE.MeshLambertMaterial({color:0xfffde7}),-37+i*5,5,-28,10);
+  var chSign=new THREE.Mesh(new THREE.BoxGeometry(16,2,0.4),new THREE.MeshLambertMaterial({map:signTex("မြို့တော်ခန်းမ","#37474f","#ffffff")}));chSign.position.set(-37,10.5,-28);scene.add(chSign);
+  // 3 Bogyoke Market — long hall, arched roof
+  box(34,8,18,new THREE.MeshLambertMaterial({color:0xffe0b2}),37,4,-37);
+  var roof=new THREE.Mesh(new THREE.CylinderGeometry(9,9,34,12,1,false,0,Math.PI),new THREE.MeshLambertMaterial({color:0x6d4c41}));
+  roof.rotation.z=Math.PI/2;roof.position.set(37,8,-37);roof.castShadow=true;scene.add(roof);
+  for(var a=0;a<5;a++)box(5,0.5,3,new THREE.MeshLambertMaterial({color:["#e53935","#1e88e5","#43a047","#fb8c00","#8e24aa"][a]}),37-12+a*6,8.6,-26);
+  // 4 Shwedagon — big golden stupa on hill at north edge
+  var hill=new THREE.Mesh(new THREE.ConeGeometry(55,14,20),new THREE.MeshLambertMaterial({color:0x6b8e5a}));hill.position.set(0,7,-185);hill.receiveShadow=true;scene.add(hill);
+  var shwe=stupa(0,-185,9,30,1.6);shwe.position.y=12;
+  // 5 Secretariat — red brick
+  box(30,16,18,new THREE.MeshLambertMaterial({map:facadeTex("#8d3b2f","#ffe0b2",4,6)}),-112,8,37);
+  box(32,2,20,new THREE.MeshLambertMaterial({color:0x5d2a20}),-112,17,37);
+  cyl(1.2,1.2,8,new THREE.MeshLambertMaterial({color:0x3e2723}),-112,20,37,10);
+  // 6 Kandawgyi Lake + Karaweik barge
+  var lake=new THREE.Mesh(new THREE.CircleGeometry(26,24),new THREE.MeshLambertMaterial({color:0x2a7fa8}));lake.rotation.x=-Math.PI/2;lake.position.set(150,0.15,150);lake.receiveShadow=true;scene.add(lake);
+  var barge=new THREE.Group();
+  var hull=new THREE.Mesh(new THREE.BoxGeometry(14,2,4),new THREE.MeshLambertMaterial({color:0xffd700}));hull.position.y=1;barge.add(hull);
+  var bird=new THREE.Mesh(new THREE.ConeGeometry(2.5,6,8),new THREE.MeshLambertMaterial({color:0xffd700}));bird.rotation.z=-0.6;bird.position.set(6,4,0);barge.add(bird);
+  var cabin=new THREE.Mesh(new THREE.BoxGeometry(6,3,3),new THREE.MeshLambertMaterial({color:0xb71c1c}));cabin.position.set(-2,3.5,0);barge.add(cabin);
+  barge.position.set(150,0.4,150);scene.add(barge);
+  // 7 Inya Lake
+  var inya=new THREE.Mesh(new THREE.CircleGeometry(28,24),new THREE.MeshLambertMaterial({color:0x2a7fa8}));inya.rotation.x=-Math.PI/2;inya.position.set(-150,0.15,-150);inya.receiveShadow=true;scene.add(inya);
+  // 8 River waterfront south
+  var river=new THREE.Mesh(new THREE.PlaneGeometry(460,60),new THREE.MeshLambertMaterial({color:0x1e6f9e}));river.rotation.x=-Math.PI/2;river.position.set(0,0.1,225);river.receiveShadow=true;scene.add(river);
+  box(120,1.5,8,new THREE.MeshLambertMaterial({color:0xcfc4ae}),0,0.75,192);
+  var boat=cyl(1.5,1.5,12,new THREE.MeshLambertMaterial({color:0x6d4c41}),-60,1,222,8);boat.rotation.z=Math.PI/2;
+  box(4,3,4,new THREE.MeshLambertMaterial({color:0xfff8e1}),-60,3,222);
+  // 9 St Mary's Cathedral — white church + spire
+  box(16,14,24,new THREE.MeshLambertMaterial({color:0xf5f0e6}),37,7,37);
+  cone(3,14,new THREE.MeshLambertMaterial({color:0x546e7a}),37,21,30,4);
+  cone(2.5,12,new THREE.MeshLambertMaterial({color:0x546e7a}),37,20,44,4);
+  var cross=new THREE.Mesh(new THREE.BoxGeometry(0.4,3,0.4),new THREE.MeshBasicMaterial({color:0xffd54a}));cross.position.set(37,29,30);scene.add(cross);
+  // 10 Tea shop — small, awning, tables
+  box(12,5,9,new THREE.MeshLambertMaterial({color:0xfff3e0}),-37,2.5,112);
+  box(13,0.4,4,new THREE.MeshLambertMaterial({color:0x2e7d32}),-37,5.2,116.5);
+  var ts=new THREE.Mesh(new THREE.BoxGeometry(10,1.8,0.3),new THREE.MeshLambertMaterial({map:signTex("လက်ဖက်ရည်ဆိုင်","#ff8f00","#ffffff")}));ts.position.set(-37,4.4,116.8);scene.add(ts);
+  for(var t=0;t<3;t++){cyl(0.9,0.9,0.3,new THREE.MeshLambertMaterial({color:0x8d6e63}),-42+t*5,1,120,10);cyl(0.15,0.15,1,new THREE.MeshLambertMaterial({color:0x5d4037}),-42+t*5,0.5,120,6);}
+}
+function buildNature(){
+  // trees
+  var trunkMat=new THREE.MeshLambertMaterial({color:0x6d4c41});
+  var leafMats=[0x2e7d32,0x43a047,0x1b5e20].map(function(c){return new THREE.MeshLambertMaterial({color:c});});
+  var seed=31;function srnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;}
+  for(var i=0;i<70;i++){
+    var x=-190+srnd()*380, z=-190+srnd()*380;
+    if(Math.abs(x%75)<11||Math.abs(z%75)<11)continue;
+    if(Math.abs(x)<20&&Math.abs(z)<20)continue;
+    if(Math.hypot(x-150,z-150)<30||Math.hypot(x+150,z+150)<32)continue;
+    if(z>188)continue;
+    var s=0.8+srnd()*0.9;
+    cyl(0.25*s,0.35*s,2.5*s,trunkMat,x,1.25*s,z,6);
+    var c=new THREE.Mesh(new THREE.ConeGeometry(2.2*s,5*s,8),leafMats[i%3]);c.position.set(x,(2.5+2.5)*s,z);c.castShadow=true;scene.add(c);
+  }
+  // lamps along streets
+  var lampMat=new THREE.MeshBasicMaterial({color:0xfff9c4});
+  var poleMat=new THREE.MeshLambertMaterial({color:0x37474f});
+  [-150,-75,0,75,150].forEach(function(x){
+    [-120,-40,40,120].forEach(function(z){
+      cyl(0.12,0.12,5,poleMat,x+6,2.5,z,6);
+      var bulb=new THREE.Mesh(new THREE.SphereGeometry(0.5,8,6),lampMat);bulb.position.set(x+6,5.2,z);scene.add(bulb);lampMats.push(bulb);
+    });
+  });
+}
+function buildPlayer(){
+  player=new THREE.Group();
+  var body=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.45,1.1,12),new THREE.MeshLambertMaterial({color:0x1565c0}));
+  body.position.y=0.95;body.castShadow=true;player.add(body);
+  var head=new THREE.Mesh(new THREE.SphereGeometry(0.32,14,10),new THREE.MeshLambertMaterial({color:0xffcc9e}));
+  head.position.y=1.8;head.castShadow=true;player.add(head);
+  var cap=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.34,0.12,14),new THREE.MeshLambertMaterial({color:0xffb300}));
+  cap.position.y=2.02;player.add(cap);
+  var sh=new THREE.Mesh(new THREE.CircleGeometry(0.7,16),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.3}));
+  sh.rotation.x=-Math.PI/2;sh.position.y=0.02;player.add(sh);
+  player.position.set(0,0,60);scene.add(player);
+}
+</script>
+<script>
+"use strict";
+// ---------- Controls ----------
+var joyActive=false,joyId=null,joyOX=0,joyOY=0;
+var dragActive=false,dragId=null,lastX=0,lastY=0;
+var joyEl=document.getElementById("joy"),knob=document.getElementById("knob");
+function joySet(cx,cy){
+  var r=joyEl.getBoundingClientRect(),dx=cx-(r.left+r.width/2),dy=cy-(r.top+r.height/2);
+  var len=Math.hypot(dx,dy),max=r.width/2;
+  if(len>max){dx*=max/len;dy*=max/len;}
+  knob.style.left=(39+dx)+"px";knob.style.top=(39+dy)+"px";
+  moveVec.x=dx/max;moveVec.z=dy/max;
+}
+joyEl.addEventListener("touchstart",function(e){e.preventDefault();var t=e.changedTouches[0];joyActive=true;joyId=t.identifier;joySet(t.clientX,t.clientY);},{passive:false});
+joyEl.addEventListener("touchmove",function(e){e.preventDefault();for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(t.identifier===joyId)joySet(t.clientX,t.clientY);}},{passive:false});
+function joyEnd(e){for(var i=0;i<e.changedTouches.length;i++){if(e.changedTouches[i].identifier===joyId){joyActive=false;joyId=null;moveVec.x=0;moveVec.z=0;knob.style.left="39px";knob.style.top="39px";}}}
+joyEl.addEventListener("touchend",joyEnd);joyEl.addEventListener("touchcancel",joyEnd);
+// mouse on joystick (PC testing)
+joyEl.addEventListener("mousedown",function(e){joyActive=true;joySet(e.clientX,e.clientY);});
+addEventListener("mousemove",function(e){if(joyActive&&e.buttons)joySet(e.clientX,e.clientY);});
+addEventListener("mouseup",function(){if(joyActive){joyActive=false;moveVec.x=0;moveVec.z=0;knob.style.left="39px";knob.style.top="39px";}});
+// camera drag on right side of screen
+var gl=document.getElementById("gl");
+gl.addEventListener("touchstart",function(e){var t=e.changedTouches[0];if(t.clientX>innerWidth*0.4){dragActive=true;dragId=t.identifier;lastX=t.clientX;lastY=t.clientY;}},{passive:true});
+gl.addEventListener("touchmove",function(e){for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(dragActive&&t.identifier===dragId){camYaw-=(t.clientX-lastX)*0.008;camPitch+=(t.clientY-lastY)*0.005;camPitch=Math.max(0.05,Math.min(0.9,camPitch));lastX=t.clientX;lastY=t.clientY;}}},{passive:true});
+gl.addEventListener("touchend",function(e){for(var i=0;i<e.changedTouches.length;i++)if(e.changedTouches[i].identifier===dragId)dragActive=false;});
+var mouseDrag=false,mx=0,my=0;
+gl.addEventListener("mousedown",function(e){if(e.clientX>innerWidth*0.4){mouseDrag=true;mx=e.clientX;my=e.clientY;}});
+addEventListener("mousemove",function(e){if(mouseDrag){camYaw-=(e.clientX-mx)*0.006;camPitch+=(e.clientY-my)*0.004;camPitch=Math.max(0.05,Math.min(0.9,camPitch));mx=e.clientX;my=e.clientY;}});
+addEventListener("mouseup",function(){mouseDrag=false;});
+addEventListener("keydown",function(e){keys[e.key.toLowerCase()]=true;});
+addEventListener("keyup",function(e){keys[e.key.toLowerCase()]=false;});
+addEventListener("resize",function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+// ---------- Photo ----------
+var photoBtn=document.getElementById("photoBtn"),photoHint=document.getElementById("photoHint");
+var nearest=null;
+function camForward(){
+  return {x:-Math.sin(camYaw),z:-Math.cos(camYaw)};
+}
+function updateNearest(){
+  nearest=null;var best=1e9;
+  LANDMARKS.forEach(function(L){
+    var d=Math.hypot(player.position.x-L.x,player.position.z-L.z);
+    if(d<L.range&&d<best){best=d;nearest={L:L,dist:d};}
+  });
+  if(nearest&&state.started&&!state.over){
+    photoBtn.classList.add("ready");
+    photoHint.style.display="block";
+    var tag=CHAL.indexOf(nearest.L.id)>=0?" ⭐ Challenge":"";
+    photoHint.innerHTML="📷 <b>"+nearest.L.name+"</b>"+tag+"<br>"+Math.round(nearest.dist)+" မီတာ — ရိုက်လို့ရပြီ!";
+  }else{
+    photoBtn.classList.remove("ready");photoHint.style.display="none";
+  }
+}
+function showToast(html,ms){
+  var t=document.getElementById("toast");t.innerHTML=html;t.style.display="block";
+  setTimeout(function(){t.style.display="none";},ms||2200);
+}
+function takePhoto(){
+  if(!state.started||state.over)return;
+  if(!nearest){showToast("📷 landmark နား သွားမှ ရိုက်လို့ရမယ်",1800);beep(200,0.15,"sawtooth",0.08);return;}
+  var L=nearest.L;
+  if(state.photos[L.id]){showToast("✅ "+L.name+" — ရိုက်ပြီးသားပါ",1800);return;}
+  var f=camForward(),dx=L.x-player.position.x,dz=L.z-player.position.z;
+  var len=Math.hypot(dx,dz)||1,dot=Math.max(0,(f.x*dx+f.z*dz)/len);
+  var distBonus=Math.round(50*(1-nearest.dist/L.range));
+  var angleBonus=Math.round(50*dot);
+  var pts=100+distBonus+angleBonus;
+  var isChal=CHAL.indexOf(L.id)>=0;if(isChal)pts+=50;
+  var gold=goldenHour();if(gold)pts*=2;
+  state.photos[L.id]={score:pts};state.score+=pts;
+  if(isChal)state.chalDone++;
+  shutterSound();
+  document.getElementById("score").textContent=state.score;
+  document.getElementById("count").textContent=Object.keys(state.photos).length+"/10";
+  showToast("📷 "+L.name+"<br>+"+pts+" မှတ်"+(gold?" 🌇 ရွှေရောင်အချိန် ၂ ဆ!":"")+(isChal?" ⭐ Challenge +50":""),2600);
+  updateNearest();
+  if(Object.keys(state.photos).length>=10)winGame();
+}
+photoBtn.addEventListener("click",takePhoto);
+photoBtn.addEventListener("touchstart",function(e){e.preventDefault();takePhoto();},{passive:false});
+
+// ---------- Minimap ----------
+var mm=document.getElementById("minimap"),mmc=mm.getContext("2d");
+function drawMinimap(){
+  var W=mm.width,H=mm.height,s=W/440;
+  mmc.fillStyle="#12233d";mmc.fillRect(0,0,W,H);
+  mmc.strokeStyle="#5a6b7d";mmc.lineWidth=4;
+  [-150,-75,0,75,150].forEach(function(v){var p=(v+220)*s;mmc.beginPath();mmc.moveTo(p,0);mmc.lineTo(p,H);mmc.stroke();mmc.beginPath();mmc.moveTo(0,p);mmc.lineTo(W,p);mmc.stroke();});
+  mmc.fillStyle="#2a7fa8";
+  mmc.beginPath();mmc.arc((150+220)*s,(150+220)*s,8,0,7);mmc.fill();
+  mmc.beginPath();mmc.arc((-150+220)*s,(-150+220)*s,8,0,7);mmc.fill();
+  mmc.fillRect(0,(195+220)*s,W,12);
+  LANDMARKS.forEach(function(L){
+    var x=(L.x+220)*s,y=(L.z+220)*s;
+    mmc.beginPath();mmc.arc(x,y,state.photos[L.id]?5:4.5,0,7);
+    mmc.fillStyle=state.photos[L.id]?"#66bb6a":"#ffd54a";mmc.fill();
+    if(CHAL.indexOf(L.id)>=0&&!state.photos[L.id]){mmc.strokeStyle="#ff5252";mmc.lineWidth=2;mmc.beginPath();mmc.arc(x,y,8,0,7);mmc.stroke();}
+  });
+  var px=(player.position.x+220)*s,py=(player.position.z+220)*s;
+  mmc.fillStyle="#fff";mmc.beginPath();mmc.arc(px,py,5,0,7);mmc.fill();
+  mmc.strokeStyle="#e53935";mmc.lineWidth=2;mmc.beginPath();mmc.moveTo(px,py);mmc.lineTo(px-Math.sin(camYaw)*11,py-Math.cos(camYaw)*11);mmc.stroke();
+}
+
+// ---------- Day cycle / lighting ----------
+function updateDay(){
+  var t=state.elapsed,sky,sunI,hemiI,fogC;
+  if(t<SUNSET){
+    var dayF=t/SUNSET;
+    if(t<180){sky=new THREE.Color(0x87ceeb);sunI=1.1;}
+    else if(t<360){sky=new THREE.Color(0x9fd8ff);sunI=1.25;}
+    else{var g=(t-360)/120;sky=new THREE.Color().lerpColors(new THREE.Color(0x9fd8ff),new THREE.Color(0xff9a56),g);sunI=1.25-0.45*g;}
+    hemiI=0.9;moonLight.intensity=0;
+    sunLight.position.set(120*Math.cos(dayF*Math.PI),180-60*dayF,60);
+  }else{
+    sky=new THREE.Color(0x0d1b33);sunI=0.12;hemiI=0.25;moonLight.intensity=0.5;
+    sunLight.position.set(-80,120,-40);
+  }
+  scene.background.copy(sky);scene.fog.color.copy(sky);
+  sunLight.intensity=sunI;hemi.intensity=hemiI;
+  var night=t>=SUNSET;
+  lampMats.forEach(function(b){b.material.color.setHex(night?0xffe082:0x9e9e9e);});
+  // sun icon + clock
+  document.getElementById("clock").textContent=gameClock();
+  document.getElementById("dayPart").textContent=dayPart();
+  document.getElementById("sunIcon").textContent=t<SUNSET?(t>=GOLD_START?"🌇":"☀️"):"🌙";
+}
+
+// ---------- Win / Lose / Reset ----------
+function winGame(){
+  if(state.over)return;state.over=true;
+  document.getElementById("winScore").textContent=state.score;
+  document.getElementById("winTime").textContent=gameClock()+" ("+Math.round(state.elapsed/60)+" မိနစ်)";
+  document.getElementById("winChal").textContent=state.chalDone+"/3";
+  document.getElementById("winScreen").style.display="flex";
+  beep(523,0.2,"sine",0.15);setTimeout(function(){beep(659,0.2,"sine",0.15);},200);setTimeout(function(){beep(784,0.35,"sine",0.15);},400);
+}
+function loseGame(){
+  if(state.over)return;state.over=true;
+  document.getElementById("loseCount").textContent=Object.keys(state.photos).length+"/10";
+  document.getElementById("loseScore").textContent=state.score;
+  document.getElementById("loseText").textContent=Object.keys(state.photos).length>=7?"နည်းနည်းလေးပဲ လိုတော့တယ် — မနက်ဖြန် ထပ်ကြိုးစားပါ!":"ဓာတ်ပုံ မပြည့်သေးဘူး";
+  document.getElementById("loseScreen").style.display="flex";
+}
+function resetGame(){
+  state={started:true,over:false,score:0,photos:{},elapsed:0,chalDone:0};
+  sunsetChecked=false;
+  document.getElementById("score").textContent="0";
+  document.getElementById("count").textContent="0/10";
+  player.position.set(0,0,60);playerYaw=0;camYaw=0;camPitch=0.32;
+  document.getElementById("winScreen").style.display="none";
+  document.getElementById("loseScreen").style.display="none";
+  document.getElementById("startScreen").style.display="none";
+  renderAlbum();
+}
+document.getElementById("winRetry").addEventListener("click",resetGame);
+document.getElementById("loseRetry").addEventListener("click",resetGame);
+document.getElementById("startBtn").addEventListener("click",function(){beep(440,0.1,"sine",0.12);resetGame();});
+
+// ---------- Album ----------
+function renderAlbum(){
+  var g=document.getElementById("albumGrid");g.innerHTML="";
+  LANDMARKS.forEach(function(L){
+    var d=document.createElement("div");
+    var done=state.photos[L.id],isChal=CHAL.indexOf(L.id)>=0;
+    d.className="slot"+(done?" done":"");
+    d.innerHTML=(done?"📷":"⬜")+"<div class='nm'>"+L.name+(isChal?" ⭐":"")+"</div>"+(done?"<div class='sc'>"+state.photos[L.id].score+" မှတ်</div>":"<div>မရိုက်ရသေး</div>");
+    g.appendChild(d);
+  });
+}
+document.getElementById("albumBtn").addEventListener("click",function(){renderAlbum();document.getElementById("albumModal").style.display="flex";});
+document.getElementById("albumClose").addEventListener("click",function(){document.getElementById("albumModal").style.display="none";});
+document.getElementById("soundBtn").addEventListener("click",function(){soundOn=!soundOn;this.textContent=soundOn?"🔊 အသံ: ဖွင့်":"🔇 အသံ: ပိတ်";});
+document.getElementById("fsBtn").addEventListener("click",function(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();});
+
+// ---------- Challenge list on start screen ----------
+(function(){
+  var html="<b>🎯 ဒီနေ့ Challenge (⭐):</b><br>";
+  CHAL.forEach(function(id){html+="⭐ "+LANDMARKS[id].name+"<br>";});
+  html+="<span style='color:#b0bec5'>Challenge နေရာ ရိုက်ရင် +50 bonus</span>";
+  document.getElementById("challengeList").innerHTML=html;
+  document.getElementById("chalMini").textContent=CHAL.map(function(id){return LANDMARKS[id].name;}).join(" • ");
+})();
+
+// ---------- Main loop ----------
+var sunsetChecked=false;
+function animate(){
+  requestAnimationFrame(animate);
+  var dt=Math.min(clock.getDelta(),0.05);
+  if(state.started&&!state.over){
+    state.elapsed+=dt;
+    if(state.elapsed>=SUNSET&&!sunsetChecked){sunsetChecked=true;loseGame();}
+    if(state.elapsed>=DAY_LEN&&!state.over)loseGame();
+  }
+  // movement (joystick + keys), camera-relative — responsive, no lag
+  var mx=moveVec.x,mz=moveVec.z;
+  if(keys["w"]||keys["arrowup"])mz-=1;
+  if(keys["s"]||keys["arrowdown"])mz+=1;
+  if(keys["a"]||keys["arrowleft"])mx-=1;
+  if(keys["d"]||keys["arrowright"])mx+=1;
+  var len=Math.hypot(mx,mz);
+  if(len>0.01&&state.started&&!state.over){
+    mx/=Math.max(1,len);mz/=Math.max(1,len);
+    var sin=Math.sin(camYaw),cos=Math.cos(camYaw);
+    var wx=mx*cos+mz*sin, wz=-mx*sin+mz*cos;
+    var sp=9*dt;
+    var nx=player.position.x+wx*sp, nz=player.position.z+wz*sp;
+    nx=Math.max(-205,Math.min(205,nx));nz=Math.max(-205,Math.min(205,nz));
+    // river blocks south
+    if(nz>200)nz=200;
+    player.position.x=nx;player.position.z=nz;
+    var target=Math.atan2(wx,wz);playerYaw=target;
+    player.rotation.y=playerYaw;
+    // walk bob
+    player.position.y=Math.abs(Math.sin(performance.now()/90))*0.06;
+  }else{player.position.y=0;}
+  // camera: third-person, eye-level behind player
+  var cd=7,ch=2.6+camPitch*4;
+  camera.position.set(
+    player.position.x+Math.sin(camYaw)*cd,
+    player.position.y+ch,
+    player.position.z+Math.cos(camYaw)*cd
+  );
+  camera.lookAt(player.position.x,player.position.y+1.6,player.position.z);
+  updateNearest();
+  updateDay();
+  drawMinimap();
+  renderer.render(scene,camera);
+}
+init();
+renderAlbum();
+</script>
+</body>
+</html>
